@@ -1,0 +1,239 @@
+---
+title: "How much delayed licensing happens?"
+output:
+  html_document:
+    df_print: paged
+    keep_md: yes
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    code_folding: hide
+bibliography: bibliography.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      cache = TRUE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      message = FALSE
+                      )
+library(tidyverse)
+library(rcrossref)
+```
+
+@Piwowar2017 investigated the Open Access (OA) status of scholarly literature. In this notebook, articles categorized as hybrid open access from the Crossref and the WoS sample used in this study were re-examined. In particular, it was asked how many delayed articles are included in the subset `hybrid (via crossref license)`. To this end, Crossref API was used to obtain information about licensing delays using the rcrossref package [@CrossrefPack]. 
+
+## WoS sample
+
+```{r}
+readr::read_csv("wos_100k.csv") %>%
+    # only use publications in period 2009:2015
+    filter(year %in% 2009:2015) -> wos
+```
+
+The first dataset used was obtained from the Web of Science. The WoS sample includes `r n_distinct(wos$doi)` unique DOIs.
+
+Here is breakdown by open access type:
+
+```{r}
+wos %>%
+    group_by(oa_color_long) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) *100)
+```
+
+### Overview hybrid OA
+
+According to @Piwowar2017, articles were categorized as hybrid if they were "Free under an open license in a toll-access journal". What licenses were used to identify hybrid open access:
+
+```{r}
+wos %>%
+    filter(oa_color_long == "hybrid") %>%
+    group_by(license) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) * 100)
+```
+
+It seems that not for every hybrid open access articles a license was disclosed in the dataset.
+
+Now, let's see how hybrid OA is distributed over publishers.
+
+```{r}
+wos %>%
+    filter(oa_color_long == "hybrid") %>%
+    group_by(publisher) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) * 100) %>%
+    arrange(desc(n))
+```
+
+How did oaDOI determine the hybrid oa evidence?
+
+```{r}
+wos %>%
+    filter(oa_color_long == "hybrid") %>%
+    group_by(evidence) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) * 100) %>%
+    arrange(desc(n))
+```
+
+### Hybrid OA versus delayed
+
+Licenses metadata in Crossref can also be used to identify delayed open access content. To check, let us write a helper function that a) retrieves Crossref metadata for a single DOI using the rcrossref package, and b) parses licensing metadata. `delay-in-days` must be zero in order indicate immediate free access.
+
+```{r}
+licensing_check <- function(doi = NULL) {
+   cr_tmp <- rcrossref::cr_works_(doi, parse = FALSE) %>%
+        jsonlite::fromJSON()
+        cr_tmp$message$license
+        }
+# example for delayed usage of http://www.elsevier.com/open-access/userlicense/1.0/	license
+licensing_check("10.1016/j.dam.2008.06.028")
+```
+
+Now, let us apply the function to every hybrid open access article in the subset `hybrid (via crossref license)`.
+
+```{r cache=TRUE}
+wos %>%
+    filter(oa_color_long == "hybrid") %>%
+    filter(evidence == "hybrid (via crossref license)") -> cr_dois
+cr_dois
+cr_df <- purrr::map(cr_dois$doi, purrr::safely(licensing_check))
+tt <- purrr::map(cr_df, "result")
+names(tt) <- cr_dois$doi
+license_dates <- map_df(tt, `[`, c("URL", "delay-in-days"), .id = "doi") 
+# backup
+readr::write_csv(license_dates, "wos_cr_licensing_md.csv")
+```
+
+We need to check for open licenses used by oaDOI, which [can be found in the source code of oaDOI](https://github.com/dissemin/dissemin/blob/0aa00972eb13a6a59e1bc04b303cdcab9189406a/backend/crossref.py#L89).
+
+```{r}
+license_patterns <- tolower(c("creativecommons.org/licenses/",
+                      "http://koreanjpathol.org/authors/access.php",
+                      "http://olabout.wiley.com/WileyCDA/Section/id-815641.html",
+                      "http://pubs.acs.org/page/policy/authorchoice_ccby_termsofuse.html",
+                      "http://pubs.acs.org/page/policy/authorchoice_ccbyncnd_termsofuse.html",
+                      "http://pubs.acs.org/page/policy/authorchoice_termsofuse.html",
+                      "http://www.elsevier.com/open-access/userlicense/1.0/",
+                      "http://www.ieee.org/publications_standards/publications/rights/oapa.pdf"))
+
+license_dates %>%
+    mutate(URL = tolower(URL)) %>%
+    mutate(hybrid_license = ifelse(grepl(paste(license_patterns, collapse = "|"), URL), TRUE, FALSE)) %>%
+  filter(hybrid_license == TRUE) %>%
+    filter(`delay-in-days` > 0) -> wos_delay
+```
+
+The following table shows freely available articles with delayed licenses.
+
+```{r}
+wos_delay
+```
+
+## Crossref sample
+
+The same steps are now applied to the Crossref sample.
+
+```{r}
+cr_sample <- readr::read_csv("crossref_100k.csv")
+```
+
+The Crossref sample includes `r n_distinct(cr_sample$doi)` unique DOIs.
+
+Breakdown by access type:
+
+```{r}
+cr_sample %>%
+    group_by(oa_color_long) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) *100)
+```
+
+###  Overview hybrid OA
+
+```{r}
+cr_sample %>%
+    filter(oa_color_long == "hybrid") %>%
+    group_by(license) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) * 100)
+```
+
+Let's see how hybrid OA is distributed over publishers.
+
+```{r}
+cr_sample %>%
+    filter(oa_color_long == "hybrid") %>%
+    group_by(publisher) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) * 100) %>%
+    arrange(desc(n))
+```
+
+How did oaDOI determine the hybrid open access evidence:
+
+```{r}
+cr_sample %>%
+    filter(oa_color_long == "hybrid") %>%
+    group_by(evidence) %>%
+    summarize(n = n()) %>%
+    mutate(perc_prop = n / sum(n) * 100) %>%
+    arrange(desc(n))
+```
+
+Now obtain Crossref licensing metadata for hybrid open access article determined by oaDOI:
+
+```{r cache=TRUE}
+cr_sample %>%
+    filter(oa_color_long == "hybrid") %>%
+    filter(evidence == "hybrid (via crossref license)") -> cr_sample_dois
+cr_df <- purrr::map(cr_sample_dois$doi, purrr::safely(licensing_check))
+tt <- purrr::map(cr_df, "result")
+names(tt) <- cr_sample_dois$doi
+license_dates <- map_df(tt, `[`, c("URL", "delay-in-days"), .id = "doi") 
+# backup
+readr::write_csv(license_dates, "cr_sample_cr_licensing_md.csv")
+```
+
+
+```{r}
+license_dates %>%
+  mutate(URL = tolower(URL)) %>%
+  mutate(hybrid_license = ifelse(grepl(paste(license_patterns, collapse = "|"), URL), TRUE, FALSE)) %>%
+  filter(hybrid_license == TRUE) %>%
+  filter(`delay-in-days` > 0) -> cr_delay
+cr_delay 
+```
+
+```{r}
+# some validation
+cr_not_delayed <- license_dates %>%
+  mutate(URL = tolower(URL)) %>%
+  mutate(hybrid_license = ifelse(grepl(paste(license_patterns, collapse = "|"), URL), TRUE, FALSE)) %>%
+  filter(hybrid_license == TRUE) %>%
+  filter(`delay-in-days` < 1)
+table(cr_delay$doi %in% cr_not_delayed$doi)
+```
+
+### Results
+
+The following table shows that across both DOI samples around 70% of articles determined as hybrid open access via Crossref licensing information were tagged with open licenses, which came into effect a certain time after publication.
+
+```{r}
+data_frame(Sample = c("Crossref", "WoS"), 
+           `Articles in hybrid (via crossref license) subset` = c(n_distinct(cr_sample_dois$doi), n_distinct(cr_dois$doi)), 
+           `Delayed licenses found` = c(n_distinct(cr_delay$doi), n_distinct(wos_delay$doi))) %>%
+  mutate(`Proportion (in%)` = `Delayed licenses found` / `Articles in hybrid (via crossref license) subset`)
+```
+
+## Session Info
+
+```{r, include=TRUE}
+sessionInfo()
+```
+
+## References
+
