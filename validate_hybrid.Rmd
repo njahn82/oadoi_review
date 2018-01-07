@@ -1,5 +1,5 @@
 ---
-title: "How much delayed licensing happens?"
+title: "Do hybrid open access articles identified by oaDOI also include some delayed open access?"
 output:
   html_document:
     df_print: paged
@@ -9,6 +9,9 @@ output:
     toc_float: yes
     code_folding: hide
 bibliography: bibliography.bib
+csl: frontiers.csl
+date: 2018-01-07
+author: "Najko Jahn"
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +25,9 @@ library(tidyverse)
 library(rcrossref)
 ```
 
-@Piwowar2017 investigated the Open Access (OA) status of scholarly literature. In this notebook, articles categorized as hybrid open access from the Crossref and the WoS sample used in this study were re-examined. In particular, it was asked how many delayed articles are included in the subset `hybrid (via crossref license)`. To this end, Crossref API was used to obtain information about licensing delays using the rcrossref package [@CrossrefPack]. 
+## About 
+
+@Piwowar2017 investigated the Open Access (OA) status of scholarly literature. In this notebook, I re-examined articles categorized as hybrid open access from the Crossref and the WoS samples using the raw data [@piwowar_heather_2017_837902]. In particular, I wondered how many delayed articles are included in the subset `hybrid (via crossref license)`. To this end, Crossref API was used to obtain information about licensing delays using the rcrossref package [@CrossrefPack]. 
 
 ## WoS sample
 
@@ -32,7 +37,7 @@ readr::read_csv("wos_100k.csv") %>%
     filter(year %in% 2009:2015) -> wos
 ```
 
-The first dataset used was obtained from the Web of Science. The WoS sample includes `r n_distinct(wos$doi)` unique DOIs.
+The first dataset contains random DOIs from journal articles indexed in the Web of Science together with data about their open access availability from oaDOI (`wos_100k.csv`) [@piwowar_heather_2017_837902]. The WoS sample includes `r n_distinct(wos$doi)` unique DOIs.
 
 Here is breakdown by open access type:
 
@@ -45,7 +50,7 @@ wos %>%
 
 ### Overview hybrid OA
 
-According to @Piwowar2017, articles were categorized as hybrid if they were "Free under an open license in a toll-access journal". What licenses were used to identify hybrid open access:
+According to @Piwowar2017, articles were categorized as hybrid if they were "Free under an open license in a toll-access journal". What licenses were used to identify hybrid open access?
 
 ```{r}
 wos %>%
@@ -55,9 +60,9 @@ wos %>%
     mutate(perc_prop = n / sum(n) * 100)
 ```
 
-It seems that not for every hybrid open access articles a license was disclosed in the dataset.
+It seems that not for every hybrid open access articles a license was disclosed in the dataset indicated by `NA` values.
 
-Now, let's see how hybrid OA is distributed over publishers.
+Now, let's obtain a breakdown of hybrid open access by publisher:
 
 ```{r}
 wos %>%
@@ -68,7 +73,7 @@ wos %>%
     arrange(desc(n))
 ```
 
-How did oaDOI determine the hybrid oa evidence?
+How did oaDOI determine the hybrid OA evidence?
 
 ```{r}
 wos %>%
@@ -79,7 +84,7 @@ wos %>%
     arrange(desc(n))
 ```
 
-### Hybrid OA versus delayed
+### Delayed Hybrid OA 
 
 Licenses metadata in Crossref can also be used to identify delayed open access content. To check, let us write a helper function that a) retrieves Crossref metadata for a single DOI using the rcrossref package, and b) parses licensing metadata. `delay-in-days` must be zero in order indicate immediate free access.
 
@@ -135,7 +140,7 @@ wos_delay
 
 ## Crossref sample
 
-The same steps are now applied to the Crossref sample.
+The same steps are now applied to the Crossref sample (`crossref_100k.csv`) [@piwowar_heather_2017_837902].
 
 ```{r}
 cr_sample <- readr::read_csv("crossref_100k.csv")
@@ -208,6 +213,8 @@ license_dates %>%
 cr_delay 
 ```
 
+Finally some validation: Do articles with more than one license can have at least one delayed and at least one immediate open license? 
+
 ```{r}
 # some validation
 cr_not_delayed <- license_dates %>%
@@ -234,6 +241,25 @@ data_frame(Sample = c("Crossref", "WoS"),
 ```{r, include=TRUE}
 sessionInfo()
 ```
+
+## License
+
+<p xmlns:dct="http://purl.org/dc/terms/" xmlns:vcard="http://www.w3.org/2001/vcard-rdf/3.0#">
+  <a rel="license"
+     href="http://creativecommons.org/publicdomain/zero/1.0/">
+    <img src="http://i.creativecommons.org/p/zero/1.0/88x31.png" style="border-style: none;" alt="CC0" />
+  </a>
+  <br />
+  To the extent possible under law,
+  <span resource="[_:publisher]" rel="dct:publisher">
+    <span property="dct:title">Najko Jahn</span></span>
+  has waived all copyright and related or neighboring rights to
+  this work.
+This work is published from:
+<span property="vcard:Country" datatype="dct:ISO3166"
+      content="DE" about="[_:publisher]">
+  Germany</span>.
+</p>
 
 ## References
 
